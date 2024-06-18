@@ -1,13 +1,69 @@
-FROM nfcore/base:1.14
-LABEL authors="The nf-core/eager community" \
-      description="Docker image containing all software requirements for the nf-core/eager pipeline"
+# DO NOT CHANGE
+from 812206152185.dkr.ecr.us-west-2.amazonaws.com/latch-base:fe0b-main
 
-# Install the conda environment
-COPY environment.yml /
-RUN conda env create --quiet -f /environment.yml && conda clean -a
+workdir /tmp/docker-build/work/
 
-# Add conda installation dir to PATH (instead of doing 'conda activate')
-ENV PATH /opt/conda/envs/nf-core-eager-2.5.1/bin:$PATH
+shell [ \
+    "/usr/bin/env", "bash", \
+    "-o", "errexit", \
+    "-o", "pipefail", \
+    "-o", "nounset", \
+    "-o", "verbose", \
+    "-o", "errtrace", \
+    "-O", "inherit_errexit", \
+    "-O", "shift_verbose", \
+    "-c" \
+]
+env TZ='Etc/UTC'
+env LANG='en_US.UTF-8'
 
-# Dump the details of the installed packages to a file for posterity
-RUN conda env export --name nf-core-eager-2.5.1 > nf-core-eager-2.5.1.yml
+arg DEBIAN_FRONTEND=noninteractive
+
+# Latch SDK
+# DO NOT REMOVE
+run pip install latch==2.46.6
+run mkdir /opt/latch
+run apt-get update && apt-get install -y default-jre-headless
+
+# Install Mambaforge
+run apt-get update --yes && \
+    apt-get install --yes curl && \
+    curl \
+        --location \
+        --fail \
+        --remote-name \
+        https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-Linux-x86_64.sh && \
+    `# Docs for -b and -p flags: https://docs.anaconda.com/anaconda/install/silent-mode/#linux-macos` \
+    bash Mambaforge-Linux-x86_64.sh -b -p /opt/conda -u && \
+    rm Mambaforge-Linux-x86_64.sh
+
+# Set conda PATH
+env PATH=/opt/conda/bin:$PATH
+RUN conda config --set auto_activate_base false
+
+# Build conda environment
+copy environment.yml /opt/latch/environment.yaml
+run mamba env create \
+    --file /opt/latch/environment.yaml \
+    --name nf-core-eager-2.5.1
+env PATH=/opt/conda/envs/nf-core-eager-2.5.1/bin:$PATH
+
+
+# Copy workflow data (use .dockerignore to skip files)
+
+copy . /root/
+
+# Latch nextflow workflow entrypoint
+# DO NOT CHANGE
+
+run ln -s /root/.latch/bin/nextflow /root/nextflow
+run ln -s /root/.latch/.nextflow /root/.nextflow
+
+
+# Latch workflow registration metadata
+# DO NOT CHANGE
+arg tag
+# DO NOT CHANGE
+env FLYTE_INTERNAL_IMAGE $tag
+
+workdir /root
